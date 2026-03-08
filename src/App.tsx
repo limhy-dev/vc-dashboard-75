@@ -1,0 +1,626 @@
+
+import React, { useEffect, useState, useMemo } from 'react';
+import {
+  TrendingUp,
+  ShoppingCart,
+  DollarSign,
+  Activity,
+  Filter,
+  Star,
+  Award,
+  Calendar,
+  Percent,
+  Sparkles
+} from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend
+} from 'recharts';
+
+interface SalesRow {
+  date: string;
+  product: string;
+  channel: string;
+  orders: number;
+  revenue: number;
+  cost: number;
+  visitors: number;
+  customers: number;
+}
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899'];
+
+export default function App() {
+  const [data, setData] = useState<SalesRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Filters state
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState('All');
+  const [selectedChannel, setSelectedChannel] = useState('All');
+
+  // AI Insights State
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite-preview');
+  const [aiInsights, setAiInsights] = useState<{ alerts: string[], opportunities: string[], suggestions: string[] } | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [fetchError, setFetchError] = useState('');
+
+  useEffect(() => {
+    fetch('http://localhost:3001/api/sales')
+      .then(response => {
+        if (!response.ok) return response.json().then(err => { throw new Error(err.error || 'Failed to fetch') });
+        return response.json();
+      })
+      .then(parsedData => {
+        // Set initial dates based on data bounds
+        const sortedDates = [...new Set(parsedData.map((d: any) => d.date))].sort();
+        if (sortedDates.length > 0) {
+          setStartDate(String(sortedDates[0]));
+          setEndDate(String(sortedDates[sortedDates.length - 1]));
+        }
+
+        setData(parsedData);
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error('Error fetching data from API:', error);
+        setFetchError(error.message || 'Could not connect to the sales API. Is the server running?');
+        setLoading(false);
+      });
+  }, []);
+
+  // Filter options
+  const uniqueProducts = useMemo(() => ['All', ...new Set(data.map(d => d.product).filter(Boolean))], [data]);
+  const uniqueChannels = useMemo(() => ['All', ...new Set(data.map(d => d.channel).filter(Boolean))], [data]);
+
+  // Filtered data
+  const filteredData = useMemo(() => {
+    return data.filter(row => {
+      const matchDate = row.date >= startDate && row.date <= endDate;
+      const matchProduct = selectedProduct === 'All' || row.product === selectedProduct;
+      const matchChannel = selectedChannel === 'All' || row.channel === selectedChannel;
+      return matchDate && matchProduct && matchChannel;
+    });
+  }, [data, startDate, endDate, selectedProduct, selectedChannel]);
+
+  // KPIs
+  const kpis = useMemo(() => {
+    const totalRevenue = filteredData.reduce((sum, row) => sum + row.revenue, 0);
+    const totalOrders = filteredData.reduce((sum, row) => sum + row.orders, 0);
+    const totalCost = filteredData.reduce((sum, row) => sum + row.cost, 0);
+    const totalProfit = totalRevenue - totalCost;
+    const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    return { totalRevenue, totalOrders, totalProfit, aov };
+  }, [filteredData]);
+
+  // Simple Insights
+  const simpleInsights = useMemo(() => {
+    if (filteredData.length === 0) return null;
+
+    const productRevs: any = {};
+    const channelRevs: any = {};
+    const dayRevs: any = {};
+    const channelConv: any = {};
+
+    filteredData.forEach(row => {
+      productRevs[row.product] = (productRevs[row.product] || 0) + row.revenue;
+      channelRevs[row.channel] = (channelRevs[row.channel] || 0) + row.revenue;
+      dayRevs[row.date] = (dayRevs[row.date] || 0) + row.revenue;
+
+      if (!channelConv[row.channel]) channelConv[row.channel] = { visitors: 0, customers: 0 };
+      channelConv[row.channel].visitors += (row.visitors || 0);
+      channelConv[row.channel].customers += (row.customers || row.orders || 0);
+    });
+
+    const bestProduct = Object.keys(productRevs).reduce((a, b) => productRevs[a] > productRevs[b] ? a : b);
+    const bestChannel = Object.keys(channelRevs).reduce((a, b) => channelRevs[a] > channelRevs[b] ? a : b);
+    const highestDay = Object.keys(dayRevs).reduce((a, b) => dayRevs[a] > dayRevs[b] ? a : b);
+
+    let bestConvChannel = '';
+    let highestConv = -1;
+    for (const [channel, stats] of Object.entries<any>(channelConv)) {
+      const conv = stats.visitors > 0 ? stats.customers / stats.visitors : 0;
+      if (conv > highestConv) {
+        highestConv = conv;
+        bestConvChannel = channel;
+      }
+    }
+
+    return {
+      bestProduct,
+      bestChannel,
+      highestDay,
+      bestConvChannel,
+      highestConvRate: (highestConv * 100).toFixed(1) + '%'
+    };
+  }, [filteredData]);
+
+  // Charts Data
+  const trendData = useMemo(() => {
+    const grouped = filteredData.reduce((acc: any, row) => {
+      if (!acc[row.date]) acc[row.date] = { date: row.date, revenue: 0 };
+      acc[row.date].revenue += row.revenue;
+      return acc;
+    }, {});
+    return Object.values(grouped).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [filteredData]);
+
+  const channelData = useMemo(() => {
+    const grouped = filteredData.reduce((acc: any, row) => {
+      if (!acc[row.channel]) acc[row.channel] = { channel: row.channel, revenue: 0 };
+      acc[row.channel].revenue += row.revenue;
+      return acc;
+    }, {});
+    return Object.values(grouped).sort((a: any, b: any) => b.revenue - a.revenue);
+  }, [filteredData]);
+
+  const productData = useMemo(() => {
+    const grouped = filteredData.reduce((acc: any, row) => {
+      if (!acc[row.product]) acc[row.product] = { product: row.product, revenue: 0 };
+      acc[row.product].revenue += row.revenue;
+      return acc;
+    }, {});
+    return Object.values(grouped).sort((a: any, b: any) => b.revenue - a.revenue);
+  }, [filteredData]);
+
+  const formatCurrency = (val: number) => `$${val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const formatNumber = (val: number) => val.toLocaleString();
+
+  // Generate AI Insights
+  const generateAiInsights = async () => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setAiError('Please set your VITE_GEMINI_API_KEY in the .env file.');
+      return;
+    }
+    setIsAiLoading(true);
+    setAiError('');
+
+    try {
+      const summary = `
+        Total Revenue: ${formatCurrency(kpis.totalRevenue)}
+        Total Orders: ${kpis.totalOrders}
+        Total Profit: ${formatCurrency(kpis.totalProfit)}
+        AOV: ${formatCurrency(kpis.aov)}
+        Best Product: ${simpleInsights?.bestProduct}
+        Best Channel: ${simpleInsights?.bestChannel}
+        Highest Revenue Day: ${simpleInsights?.highestDay}
+        Highest Conv. Rate Channel: ${simpleInsights?.bestConvChannel} (${simpleInsights?.highestConvRate})
+      `;
+
+      const prompt = `Here is a summary of our business metrics based on the current data:\n${summary}\n\nPlease analyze this and provide exactly 3 sections: Alerts, Opportunities, and Suggestions. Keep each insight short, clear, and business-oriented. Reply ONLY with valid JSON matching this schema exactly: {"alerts": ["string"], "opportunities": ["string"], "suggestions": ["string"]}`;
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+
+      if (!res.ok) {
+        let msg = 'Failed to generate insights.';
+        if (res.status === 400) msg = 'Invalid request. The API key might be incorrect.';
+        if (res.status === 404) msg = 'Model not found or invalid.';
+        throw new Error(msg);
+      }
+
+      const raw = await res.json();
+      const text = raw.candidates[0].content.parts[0].text;
+      const parsed = JSON.parse(text);
+
+      setAiInsights({
+        alerts: parsed.alerts || [],
+        opportunities: parsed.opportunities || [],
+        suggestions: parsed.suggestions || []
+      });
+    } catch (err: any) {
+      setAiError(err.message || 'An error occurred during AI analysis. Is the API key valid?');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin text-primary">
+          <Activity size={32} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background p-6 lg:p-10 font-sans text-textPrimary">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {fetchError && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex flex-col gap-1">
+            <span className="font-bold flex items-center gap-2">⚠️ Database Connection Issue</span>
+            <span>{fetchError}</span>
+            <span className="mt-2 text-xs opacity-75 italic">Tip: Check your `.env` file and ensure `DATA_SOURCE` and credentials are correct, then restart the server.</span>
+          </div>
+        )}
+
+        {/* Header & Filters */}
+        <header className="space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-textPrimary">Dashboard</h1>
+              <p className="text-textSecondary mt-1">Overview of your sales performance metrics.</p>
+            </div>
+            <div className="bg-surface border border-border px-4 py-2 rounded-lg text-sm font-medium shadow-sm flex items-center gap-2">
+              <Filter size={16} className="text-textSecondary" />
+              <span>Filter Data</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 card bg-surface">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-textSecondary uppercase">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                max={endDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="p-2 border border-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-textSecondary uppercase">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="p-2 border border-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-textSecondary uppercase">Product</label>
+              <select
+                value={selectedProduct}
+                onChange={(e) => setSelectedProduct(e.target.value)}
+                className="p-2 border border-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:outline-none bg-white"
+              >
+                {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-textSecondary uppercase">Channel</label>
+              <select
+                value={selectedChannel}
+                onChange={(e) => setSelectedChannel(e.target.value)}
+                className="p-2 border border-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:outline-none bg-white"
+              >
+                {uniqueChannels.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+        </header>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <KpiCard
+            title="Total Revenue"
+            value={formatCurrency(kpis.totalRevenue)}
+            icon={<DollarSign size={20} className="text-primary" />}
+          />
+          <KpiCard
+            title="Total Orders"
+            value={formatNumber(kpis.totalOrders)}
+            icon={<ShoppingCart size={20} className="text-success" />}
+          />
+          <KpiCard
+            title="Total Profit"
+            value={formatCurrency(kpis.totalProfit)}
+            icon={<TrendingUp size={20} className="text-emerald-500" />}
+          />
+          <KpiCard
+            title="AOV"
+            value={formatCurrency(kpis.aov)}
+            icon={<Activity size={20} className="text-indigo-500" />}
+          />
+        </div>
+
+        {/* Simple Insights */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <SimpleInsightCard title="Best Product" value={simpleInsights?.bestProduct || '-'} icon={<Star size={18} className="text-yellow-500" />} />
+          <SimpleInsightCard title="Best Channel" value={simpleInsights?.bestChannel || '-'} icon={<Award size={18} className="text-purple-500" />} />
+          <SimpleInsightCard title="Best Revenue Day" value={simpleInsights?.highestDay || '-'} icon={<Calendar size={18} className="text-blue-500" />} />
+          <SimpleInsightCard title="Top Conv. Rate" value={simpleInsights?.highestConvRate || '-'} subtitle={simpleInsights?.bestConvChannel} icon={<Percent size={18} className="text-emerald-500" />} />
+        </div>
+
+        {/* AI Insights Section */}
+        <div className="card p-6 bg-gradient-to-br from-indigo-50/50 to-white border-indigo-100/60 shadow-md">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-indigo-900 flex items-center gap-2">
+                <Sparkles size={20} className="text-indigo-600" />
+                AI Business Insights
+              </h2>
+              <p className="text-sm text-indigo-700/80 mt-1">Generate strategic insights using Gemini</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="p-2 border border-indigo-200 rounded-lg text-sm bg-white text-indigo-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none shrink-0"
+              >
+                <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash-Lite</option>
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              </select>
+              <button
+                onClick={generateAiInsights}
+                disabled={isAiLoading}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
+              >
+                {isAiLoading ? 'Analyzing...' : 'Generate '}
+              </button>
+            </div>
+          </div>
+
+          {aiError && (
+            <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100">
+              {aiError}
+            </div>
+          )}
+
+          {aiInsights && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-500">
+              <div className="bg-white p-5 rounded-xl border border-red-100 shadow-sm">
+                <h3 className="font-semibold text-red-700 mb-4 flex items-center gap-2">Alerts</h3>
+                <ul className="space-y-3">
+                  {aiInsights.alerts.map((item, i) => <li key={i} className="text-sm text-gray-700 flex items-start gap-2.5"><span className="text-red-500 shrink-0 select-none">•</span> <span>{item}</span></li>)}
+                </ul>
+              </div>
+              <div className="bg-white p-5 rounded-xl border border-emerald-100 shadow-sm">
+                <h3 className="font-semibold text-emerald-700 mb-4 flex items-center gap-2">Opportunities</h3>
+                <ul className="space-y-3">
+                  {aiInsights.opportunities.map((item, i) => <li key={i} className="text-sm text-gray-700 flex items-start gap-2.5"><span className="text-emerald-500 shrink-0 select-none">•</span> <span>{item}</span></li>)}
+                </ul>
+              </div>
+              <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
+                <h3 className="font-semibold text-blue-700 mb-4 flex items-center gap-2">Suggestions</h3>
+                <ul className="space-y-3">
+                  {aiInsights.suggestions.map((item, i) => <li key={i} className="text-sm text-gray-700 flex items-start gap-2.5"><span className="text-blue-500 shrink-0 select-none">•</span> <span>{item}</span></li>)}
+                </ul>
+              </div>
+            </div>
+          )}
+          {!aiInsights && !isAiLoading && !aiError && (
+            <div className="text-center py-6 text-indigo-400/80 text-sm border border-dashed border-indigo-200 rounded-xl bg-indigo-50/30">
+              Select your model and click generate to receive customized AI business insights based on your current filters. (Ensure your API key is in the .env file)
+            </div>
+          )}
+        </div>
+
+        {/* Charts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Main Trend Chart */}
+          <div className="card p-6 pb-2 lg:col-span-2">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-textPrimary">Revenue Trend</h2>
+              <p className="text-textSecondary text-sm">Revenue generated over time</p>
+            </div>
+            <div className="h-72 w-full">
+              {trendData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis
+                      dataKey="date"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: '#64748b' }}
+                      dy={10}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: '#64748b' }}
+                      tickFormatter={(val) => `$${val / 1000}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                      formatter={(value: any) => formatCurrency(Number(value))}
+                    />
+                    <Area type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-textSecondary">No data for selected filters</div>
+              )}
+            </div>
+          </div>
+
+          {/* Revenue by Channel (Pie Chart) */}
+          <div className="card p-6 pb-2">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-textPrimary">Revenue by Channel</h2>
+              <p className="text-textSecondary text-sm">Distribution across channels</p>
+            </div>
+            <div className="h-64 w-full">
+              {channelData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={channelData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="revenue"
+                      nameKey="channel"
+                    >
+                      {channelData.map((_: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: any) => formatCurrency(Number(value))}
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                    />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-textSecondary">No data for selected filters</div>
+              )}
+            </div>
+          </div>
+
+          {/* Top Products */}
+          <div className="card p-6 pb-2 lg:col-span-3">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-textPrimary">Top Products by Revenue</h2>
+              <p className="text-textSecondary text-sm">Best performing products</p>
+            </div>
+            <div className="h-72 w-full">
+              {productData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={productData} margin={{ top: 10, right: 10, left: 10, bottom: 30 }} barSize={60}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis
+                      dataKey="product"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 13, fill: '#475569', fontWeight: 500 }}
+                      dy={10}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: '#64748b' }}
+                      tickFormatter={(val) => `$${val / 1000}k`}
+                    />
+                    <Tooltip
+                      cursor={{ fill: '#f8fafc' }}
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                      formatter={(value: any) => formatCurrency(Number(value))}
+                    />
+                    <Bar dataKey="revenue" radius={[6, 6, 0, 0]}>
+                      {productData.map((_: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-textSecondary">No data for selected filters</div>
+              )}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Table */}
+        <div className="card overflow-hidden">
+          <div className="p-6 border-b border-border flex justify-between items-center bg-surface">
+            <div>
+              <h2 className="text-lg font-semibold text-textPrimary">Recent Transactions</h2>
+              <p className="text-textSecondary text-sm">Showing {filteredData.length} records</p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-gray-50 text-textSecondary border-b border-border">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Date</th>
+                  <th className="px-6 py-4 font-medium">Product</th>
+                  <th className="px-6 py-4 font-medium">Channel</th>
+                  <th className="px-6 py-4 font-medium text-right">Orders</th>
+                  <th className="px-6 py-4 font-medium text-right">Revenue</th>
+                  <th className="px-6 py-4 font-medium text-right">Cost</th>
+                  <th className="px-6 py-4 font-medium text-right">Profit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-white">
+                {filteredData.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-textPrimary">{row.date}</td>
+                    <td className="px-6 py-4 text-textSecondary">{row.product}</td>
+                    <td className="px-6 py-4 text-textSecondary">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700">
+                        {row.channel}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right text-textSecondary">{formatNumber(row.orders)}</td>
+                    <td className="px-6 py-4 text-right font-medium text-textPrimary">{formatCurrency(row.revenue)}</td>
+                    <td className="px-6 py-4 text-right text-textSecondary">{formatCurrency(row.cost)}</td>
+                    <td className="px-6 py-4 text-right text-emerald-600 font-medium">
+                      {formatCurrency(row.revenue - row.cost)}
+                    </td>
+                  </tr>
+                ))}
+                {filteredData.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-textSecondary">
+                      No data matches the selected filters
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ title, value, icon }: { title: string, value: string, icon: React.ReactNode }) {
+  return (
+    <div className="card p-6 flex flex-col justify-between bg-surface">
+      <div className="flex justify-between items-start">
+        <p className="text-sm font-medium text-textSecondary">{title}</p>
+        <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+          {icon}
+        </div>
+      </div>
+      <div className="mt-4 flex items-baseline gap-2">
+        <h3 className="text-2xl font-bold text-textPrimary tracking-tight">{value}</h3>
+        {/* We can make trend dynamic in the future if we track previous periods */}
+      </div>
+    </div>
+  );
+}
+
+function SimpleInsightCard({ title, value, subtitle, icon }: { title: string, value: string, subtitle?: string, icon: React.ReactNode }) {
+  return (
+    <div className="card p-4 flex items-center gap-4 bg-surface">
+      <div className="p-3 bg-gray-50 rounded-xl flex-shrink-0">
+        {icon}
+      </div>
+      <div>
+        <p className="text-[11px] font-semibold text-textSecondary uppercase tracking-widest">{title}</p>
+        <h4 className="text-lg font-bold text-textPrimary mt-0.5 leading-tight">{value}</h4>
+        {subtitle && <p className="text-[13px] text-textSecondary font-medium leading-none mt-1">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
