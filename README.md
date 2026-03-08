@@ -1,95 +1,48 @@
-# Sales Dashboard
+# Sales BI Dashboard (Next.js Edition)
 
-A modern, clean, SaaS-like dashboard built with React, Vite, and Tailwind CSS. The dashboard automatically loads and displays sales data from a local CSV file, providing key performance indicators (KPIs), a performance chart, and a detailed transaction table.
+A premium Business Intelligence dashboard built with **Next.js (App Router)** and **Tailwind CSS**, featuring real-time data visualization and **Gemini AI** strategy insights.
 
-## Features
+## 🚀 Deployment Status: Ready for Vercel
 
-- **Modern UI**: Sleek, responsive design with clear typography and carefully chosen color palettes for a premium feel.
-- **KPI Cards**: Instantly view critical metrics at a glance:
-  - Total Revenue
-  - Total Orders
-  - Total Profit
-  - Average Order Value (AOV)
-- **Interactive Chart**: A daily Revenue vs. Profit Area Chart built with Recharts, complete with gradients and tooltips.
-- **Detailed Transactions Table**: A complete view of all rows from the dataset that looks clean and highlights profit margins.
-- **Backend API Layer**: A dedicated Express.js backend serves structured JSON data to the frontend at `/api/sales`.
-- **Dual Data Sources**: Seamlessly toggle between parsing a local CSV file or fetching from a live **Supabase** Postgres database.
-## Tech Stack
+This project is optimized for deployment on Vercel. 
+- **Next.js App Router**: Utilizing the latest React server components and API routes.
+- **Server-Side AI**: Gemini API calls are handled securely on the server (Vercel Functions).
+- **Flexible Data**: Seamlessly toggle between local CSV data and a live **Supabase** database.
 
-- **Framework**: React (Bootstrapped with Vite)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS, Lucide React (Icons)
-- **Data Visualization**: Recharts
-- **Backend**: Node.js, Express, Supabase (PostgreSQL)
-- **Data Parsing**: PapaParse (CSV fallback)
+## 🛠 Features
 
-## Getting Started
+- **KPI Engine**: Real-time calculation of Revenue, Profit, Orders, and AOV.
+- **AI Strategy Insights**: Connects to Gemini (3.1 Flash/Pro) to generate Alerts, Opportunities, and Suggestions.
+- **Dynamic Charts**: Interactive performance trends using Recharts.
+- **Modern UI**: Clean, SaaS-inspired design with dark-mode support and mobile responsiveness.
 
-### Prerequisites
+## 📦 Setup & Installation
 
-- Node.js (v16.0 or higher)
-- npm or yarn
-
-### Installation
-
-1. **Clone or Download** the repository to your local machine.
-2. **Navigate** into the project directory:
+1. **Clone & Install**:
    ```bash
+   git clone [your-repo-url]
    cd vc-dashboard
-   ```
-3. **Install Dependencies**:
-   ```bash
    npm install
    ```
 
-### Running the App
-
-To start the local development server:
-
-```bash
-npm run dev
-```
-
-> **Note for Windows Users:** If you get an error like *"npm.ps1 cannot be loaded because running scripts is disabled on this system"*, you can either:
-> 1. Run it via command prompt: `cmd /c "npm run dev"`
-> 2. Or, change your PowerShell execution policy by running PowerShell as Administrator and entering: `Set-ExecutionPolicy RemoteSigned`
-
-Open your browser and navigate to the URL provided in the terminal (typically `http://localhost:5173/`).
-
-### Building for Production
-
-To create a production-ready build:
-
-```bash
-npm run build
-```
-The compiled static files will be placed in the `dist/` directory, ready to be deployed to any static host.
-
-## Data Sources
-
-The backend API is configured to read data from a local CSV by default, but is fully ready to connect to Supabase.
-
-1. Go to Supabase and create a new project.
-2. In the SQL Editor, create the sales_data table by running this SQL snippet:
-   ```sql
-   CREATE TABLE sales_data (
-     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
-     date text NOT NULL,
-     product text NOT NULL,
-     channel text NOT NULL,
-     orders integer NOT NULL DEFAULT 0,
-     revenue numeric NOT NULL DEFAULT 0,
-     cost numeric NOT NULL DEFAULT 0,
-     visitors integer NOT NULL DEFAULT 0,
-     customers integer NOT NULL DEFAULT 0
-   );
-   ```
-3. Import your CSV data into this table via the Supabase Table Editor.
-4. Go to Project Settings -> API to get your URL and Anon Key.
-5. In your local `.env` file, add your credentials and set the DATA_SOURCE:
+2. **Environment Configuration**:
+   Create a `.env` file (or set these in Vercel):
    ```env
-   DATA_SOURCE=supabase
-   SUPABASE_URL=your_project_url
-   SUPABASE_ANON_KEY=your_anon_key
+   VITE_GEMINI_API_KEY="your_gemini_key"
+   DATA_SOURCE="csv" # or "supabase"
+   SUPABASE_URL="your_url"
+   SUPABASE_ANON_KEY="your_key"
    ```
-6. Restart your development server. The API will now serve data directly from Supabase!
+
+3. **Development**:
+   ```bash
+   npm run dev
+   ```
+
+## 🌍 Production
+
+For step-by-step production deployment instructions, please refer to:
+[**production.md**](file:///c:/Users/USER/vc-dashboard/production.md)
+
+---
+*Built with ❤️ for Business Intelligence.*

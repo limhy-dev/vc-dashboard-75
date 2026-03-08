@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --primary: #3b82f6;
+  --success: #10b981;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --border: #e2e8f0;
+}
+
+@layer base {
+  body {
+    @apply bg-[#f8fafc] text-[#1e293b] font-sans antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-[#e2e8f0] rounded-xl shadow-sm transition-shadow duration-200;
+  }
+  .card:hover {
+    @apply shadow-md;
+  }
+}
