@@ -24,14 +24,24 @@ export async function POST(req: Request) {
         }
 
         const raw = await res.json();
-        const text = raw.candidates[0].content.parts[0].text;
-        const parsed = JSON.parse(text);
+        let text = raw.candidates[0].content.parts[0].text;
 
-        return NextResponse.json({
-            alerts: parsed.alerts || [],
-            opportunities: parsed.opportunities || [],
-            suggestions: parsed.suggestions || []
-        });
+        // Robust JSON parsing: remove markdown formatting if present
+        if (text.includes('```')) {
+            text = text.replace(/```json|```/g, '').trim();
+        }
+
+        try {
+            const parsed = JSON.parse(text);
+            return NextResponse.json({
+                alerts: parsed.alerts || [],
+                opportunities: parsed.opportunities || [],
+                suggestions: parsed.suggestions || []
+            });
+        } catch (parseError) {
+            console.error("Failed to parse Gemini JSON:", text);
+            throw new Error('AI returned an invalid format. Please try again.');
+        }
 
     } catch (err: any) {
         console.error("AI Insight Error:", err);
